@@ -1,6 +1,5 @@
 import math
 import numpy as np
-import matplotlib.pyplot as plt
 
 max_float = 1e50 #max float nuber (cutoff for underflow of log)
 

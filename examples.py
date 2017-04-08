@@ -1,4 +1,5 @@
 from neural_network import *
+import matplotlib.pyplot as plt
 
 #test cases
 def test0():
