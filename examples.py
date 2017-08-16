@@ -135,4 +135,9 @@ def test_class_0():
     sl = [4]  # 1 hidden layers
     nn = NeuralNetwork(len(x[0]), len(y[0]), sl)
     nn.train(x,y,300,0.7)
+    print('Prediction for training data:')
+    print(nn.predict(nn.X_ori))
+    print('Predicted class index:', nn.predict_class(nn.X_ori))
+    print('Regression accuracy:', nn.accuracy_regression(nn.X_ori, nn.Y))
+    print('Classification accuracy:', nn.accuracy_class(nn.X_ori, nn.Y))
     return nn
