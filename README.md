@@ -1,4 +1,7 @@
 # Artificial Neural Network
-Artificial neural network in Python 2.7
+Artificial neural network with arbitrary number of fully connected layers and 
+sigmoid activation function. 
 
-Required package: Numpy
+Support Python 3
+
+Required packages: numpy, matplotlib
