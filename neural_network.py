@@ -50,13 +50,18 @@ class NeuralNetwork(object):
         self.t0 = [[]] * self.n_layers  # list for bias vectors
         return
 
-    def train(self, x_data, y_data, iters, step):
+    def train(self, x_data, y_data, iters, step, verbose = 10, conti = False,
+              norm_method = 'normal'):
         '''Train the neural network with data
         
         x_data: training data features (2D float np.array with dimension = 
                 (number of examples, number of features))
         y_data: training data classes (2D np.array with values 0 or 1 
                 and dimension = (number of examples, number of classes))
+        iters: number of iterations or steps
+        step: step size or learning rate
+        verbose: number of iterations before showing training status
+        conti: Bool, whether this si a continue run following previous
         '''
         if len(x_data[0]) != self.n:
             print('inconsistent dim of x_data')
@@ -72,16 +77,20 @@ class NeuralNetwork(object):
             self.m = min(len(x_data),len(y_data))
         else:
             self.m = len(y_data) # total number of training data points
-
-        # Normalize X:
-        self.normal_X()
         
-        # Initialize the t matrices and t0 vectors:
-        self.init_t()
-        
-        # Complete the code for training neural network:
+        if conti:  # Continue run
+            # Normalize X using the previous factors:
+            self.X = self.rescale_X(self.X_ori)
+        else:  # First run
+            # Normalize X:
+            self.normal_X(method = norm_method)
+            
+            # Initialize the t matrices and t0 vectors:
+            self.init_t()
+            
+        # Training neural network:
         for i in range(iters):
-            if i % 10 == 0:
+            if i % verbose == 0:
                 c = self.cost()
                 print(str(i + 1) + 'th run: ' + str(c))
             self.activation_compute()
@@ -92,14 +101,27 @@ class NeuralNetwork(object):
         print('Final run: ' + str(self.cost()))
         return
 
-    def normal_X(self):
+    def normal_X(self, method = 'normal'):
         '''normalize X'''
-        self.X_ori_mean = self.X_ori.mean(0)
-        self.X_ori_std = self.X_ori.std(0)
-        self.X = self.X_ori
-        self.X = self.X - self.X_ori_mean
-        self.X = self.X / self.X_ori_std
+        if method == 'minmax':
+            X_ori_min = self.X_ori.min(0)
+            X_ori_max = self.X_ori.max(0)
+            self.X_ori_center = (X_ori_min + X_ori_max) / 2
+            self.X_ori_scale = (X_ori_max - X_ori_min) / 2
+        else:  # All other method use 'normal'
+            self.X_ori_center = self.X_ori.mean(0)
+            self.X_ori_scale = self.X_ori.std(0)
+        self.X_ori_scale = np.array([1.0 if x == 0.0 else x for x in self.X_ori_scale])  # avoid divid by zero issue
+        self.X = self.rescale_X(self.X_ori)
         return
+    
+    def rescale_X(self, X_ori):
+        '''rescale X using the factor stored in the network'''
+        return (X_ori - self.X_ori_center) / self.X_ori_scale
+    
+    def unrescale_X(self, X):
+        '''undo the rescale of X using the factor stored in the network'''
+        return X * self.X_ori_scale + self.X_ori_center
     
     def init_t(self):
         '''assign random initial values to the parameter matrices t in the 
@@ -115,16 +137,18 @@ class NeuralNetwork(object):
 
     def y_pred_ori(self, x_ori):
         '''input a single data x (original), return the prediction y'''
-        x_next = (x_ori - self.X_ori_mean) / self.X_ori_std # normalized
+        x_next = self.rescale_X(x_ori)        
         for j in range(self.n_layers):
-            x_next = gf(np.dot(self.t[j], x_next) + self.t0[j])
+            #x_next = gf(np.dot(self.t[j], x_next) + self.t0[j])
+            x_next = gf(np.inner(x_next, self.t[j]) + self.t0[j])
         return x_next
 
     def y_pred(self, x):
         '''input a single data x (normalized), return the prediction y'''
         x_next = x  # single data feature x
         for j in range(self.n_layers):
-            x_next = gf(np.dot(self.t[j], x_next) + self.t0[j])
+            #x_next = gf(np.dot(self.t[j], x_next) + self.t0[j])
+            x_next = gf(np.inner(x_next, self.t[j]) + self.t0[j])
         return x_next
     
     def Y_pred_gen(self):
@@ -194,8 +218,8 @@ class NeuralNetwork(object):
     
     def predict_class(self, X_ori):
         '''Return predicted class index of data set X_ori'''
-        return np.argmax(np.apply_along_axis(self.y_pred_ori, 1, X_ori),
-                         axis=1)
+        X = self.rescale_X(X_ori)
+        return np.argmax(np.apply_along_axis(self.y_pred, 1, X), axis=1)
     
     def accuracy_regression(self, X_ori, Y):
         '''Regression accuracy based on given data set X and Y
@@ -206,6 +230,13 @@ class NeuralNetwork(object):
     def accuracy_class(self, X_ori, Y):
         '''Classification accuracy based on given data set X and Y
         '''
-        Y_class = np.argmax(Y, axis=1)  # extract the class index
+        Y_class = to_class(Y)  # extract the class index
         Y_class_pred = self.predict_class(X_ori)
         return np.sum(Y_class == Y_class_pred) / len(Y_class)
+
+def to_class(Y):
+    ''' Convert class score to class index
+    Given Y = (0,0,..,1,0,0,...), return the index of the first 1
+    Given Y = (0.1, 0.9, 0.2,..), return the index of the most likely class
+    '''
+    return np.argmax(Y, axis=-1)
