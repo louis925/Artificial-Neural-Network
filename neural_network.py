@@ -51,7 +51,8 @@ class NeuralNetwork(object):
         return
 
     def train(self, x_data, y_data, iters, step, verbose = 10, conti = False,
-              norm_method = 'normal', optimizer = 'adam', init = 'coursera'):
+              norm_method = 'normal', optimizer = 'adam', 
+              initializer = 'Xavier_uniform'):
         '''Train the neural network with data
         
         x_data: training data features (2D float np.array with dimension = 
@@ -71,13 +72,20 @@ class NeuralNetwork(object):
             return
         self.X_ori = np.array(x_data)
         self.Y = np.array(y_data)
-
+        
         if len(x_data) != len(y_data):
             print('inconsistent number of data')
             self.m = min(len(x_data),len(y_data))
         else:
             self.m = len(y_data) # total number of training data points
         
+         # Recording parameters
+        self.step = step
+        self.norm_method = norm_method
+        self.optimizer = optimizer
+        self.initializer = initializer
+        
+        # Initialization or not
         if conti:  # Continue run
             # normalize X using the previous factors:
             self.X = self.rescale_X(self.X_ori)
@@ -86,19 +94,20 @@ class NeuralNetwork(object):
             self.normal_X(method = norm_method)
             
             # Initialize the t matrices and t0 vectors:
-            self.init_t()
+            self.init_t(initializer)
             
-            self.iter = 1  # Set initial time
-            if optimizer == 'adam':
+            self.iter = 1  # Set total iteration to 1
+            if optimizer == 'sgd':
+                pass
+            else:
                 self.init_adam()  # initialization for adam method
-        
-        self.step = step  # record the learning rate            
-            
+                            
         # Training neural network:
+        self.Y_pred_gen()  # For computing initial cost()
         for i in range(iters):
             if i % verbose == 0:
                 c = self.cost()
-                print(str(i + 1) + 'th run: ' + str(c))
+                print(str(i) + 'th run: ' + str(c))
             self.activation_compute()
             self.delta_compute()
             self.t_grad_gen()
@@ -118,10 +127,20 @@ class NeuralNetwork(object):
             X_ori_max = self.X_ori.max(0)
             self.X_ori_center = (X_ori_min + X_ori_max) / 2
             self.X_ori_scale = (X_ori_max - X_ori_min) / 2
+            self.X_ori_scale = np.array([1.0 if x == 0.0 else x for x in \
+                                         self.X_ori_scale])
+        elif method == 'minmax_all':
+            X_ori_min = self.X_ori.min()
+            X_ori_max = self.X_ori.max()
+            self.X_ori_center = (X_ori_min + X_ori_max) / 2
+            self.X_ori_scale = (X_ori_max - X_ori_min) / 2
+            if self.X_ori_scale == 0.0: self.X_ori_scale = 1.0
         else:  # All other method use 'normal'
             self.X_ori_center = self.X_ori.mean(0)
             self.X_ori_scale = self.X_ori.std(0)
-        self.X_ori_scale = np.array([1.0 if x == 0.0 else x for x in self.X_ori_scale])  # avoid divid by zero issue
+            self.X_ori_scale = np.array([1.0 if x == 0.0 else x for x in \
+                                         self.X_ori_scale])
+        # avoid divid by zero issue
         self.X = self.rescale_X(self.X_ori)
         return
     
@@ -133,19 +152,29 @@ class NeuralNetwork(object):
         '''undo the rescale of X using the factor stored in the network'''
         return X * self.X_ori_scale + self.X_ori_center
     
-    def init_t(self, init='coursera'):
+    def init_t(self, initializer='Xavier_uniform'):
         '''assign random initial values to the parameter matrices t and vector 
         t0 with Xavier initialization.
+        See https://keras.io/initializers/
         '''
-        #self.ti_epsi = np.array([np.sqrt(6.0/(self.sl[l] + self.sl[l+1])) \
-        #                         for l in range(self.n_layers)])
-        self.ti_epsi = np.array([2.0 * np.sqrt(1.0/(self.sl[l])) \
-                                 for l in range(self.n_layers)])
+        if initializer == 'He_uniform':
+            self.ti_epsi = np.array([np.sqrt(6.0/(self.sl[l])) \
+                                     for l in range(self.n_layers)])
+        elif initializer == 'He_normal':
+            self.ti_epsi = np.array([np.sqrt(2.0/(self.sl[l])) \
+                                     for l in range(self.n_layers)])
+        elif initializer == 'Xavier_normal':
+            self.ti_epsi = np.array([np.sqrt(2.0/(self.sl[l] + self.sl[l+1])) \
+                                     for l in range(self.n_layers)])
+        else:  # 'Xavier_uniform'
+            self.ti_epsi = np.array([np.sqrt(6.0/(self.sl[l] + self.sl[l+1])) \
+                                     for l in range(self.n_layers)])
+        
         for l in range(self.n_layers):
-            self.t[l] = self.ti_epsi[l] * (np.random.rand(self.sl[l+1],
-                  self.sl[l]) - 0.5)
-            #self.t0[l] = self.ti_epsi[l] * (np.random.rand(self.sl[l+1]) - 0.5)
-            self.t0[l] = self.ti_epsi[l] * (np.random.rand(self.sl[l+1]) - 0.5)
+            self.t[l] = self.ti_epsi[l] * (2.0 * np.random.rand(self.sl[l+1],
+                  self.sl[l]) - 1.0)
+            #self.t0[l] = self.ti_epsi[l] * (2.0 * np.random.rand(self.sl[l+1]) - 1.0)
+            self.t0[l] = np.zeros(self.sl[l+1])
         return
     
     def init_adam(self):
@@ -160,39 +189,20 @@ class NeuralNetwork(object):
         '''input data x_ori (original), return the prediction y
         x_ori can be single or a list samples
         '''
-        #x_next = self.rescale_X(x_ori)
-        #for j in range(self.n_layers):
-        #    #x_next = gf(np.dot(self.t[j], x_next) + self.t0[j])
-        #    x_next = gf(np.inner(x_next, self.t[j]) + self.t0[j])
         return self.y_pred(self.rescale_X(x_ori))
 
     def y_pred(self, x):
         '''input data x (normalized), return the prediction y
         x can be single or a list samples
         '''
-        #x_next = x  # single data feature x
-        for j in range(self.n_layers):
-            #x_next = gf(np.dot(self.t[j], x_next) + self.t0[j])
-            x = gf(np.inner(x, self.t[j]) + self.t0[j])
+        for l in range(self.n_layers):
+            x = gf(np.inner(x, self.t[l]) + self.t0[l])
         return x
     
     def Y_pred_gen(self):
         '''Generate and return the prediction Y from the training data X'''
-        #self.Y_pred = np.array(map(self.y_pred, self.X))
-        #self.Y_pred = np.apply_along_axis(self.y_pred, 1, self.X)
         self.Y_pred = self.y_pred(self.X)
         return self.Y_pred
-
-    def Chi_square(self):
-        '''total Chi square error'''
-        return np.sum(( self.Y_pred - self.Y )**2)
-
-    def cost(self):
-        '''return the total cost according to the training data 
-        for the neural network
-        '''
-        self.Y_pred_gen()
-        return np.sum(cost_f(self.Y, self.Y_pred)) / self.m
 
     def activation_compute(self):
         '''compute the activation of each layers based on data (forward
@@ -200,8 +210,9 @@ class NeuralNetwork(object):
         '''
         self.A = [self.X] + [[]] * self.n_layers
         for l in range(self.n_layers):
-            self.A[l + 1] = gf(np.tensordot(self.A[l], self.t[l], (1,1))
-                               + self.t0[l])
+            #self.A[l + 1] = gf(np.tensordot(self.A[l], self.t[l], (1,1)) + self.t0[l])
+            self.A[l + 1] = gf(np.inner(self.A[l], self.t[l]) + self.t0[l])
+        self.Y_pred = self.A[-1]
         return
 
     def delta_compute(self):
@@ -260,6 +271,19 @@ class NeuralNetwork(object):
             self.t[l] -= step * mt / (np.sqrt(vt) + eps)
             self.t0[l] -= step * mt0 / (np.sqrt(vt0) + eps)
         return
+    
+    def Chi_square(self):
+        '''total Chi square error
+        Run activation_compute
+        '''
+        return np.sum(( self.Y_pred - self.Y )**2)
+
+    def cost(self):
+        '''return the total cost according to the training data 
+        for the neural network
+        '''
+        #self.Y_pred_gen()  # Need to remove this
+        return np.sum(cost_f(self.Y, self.Y_pred)) / self.m
 
     def predict(self, X_ori):
         '''Return the 0 or 1 prediction of X_ori in each Y'''

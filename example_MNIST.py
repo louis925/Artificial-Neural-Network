@@ -5,14 +5,8 @@ import neural_network as nn
 length_x = 28 # width of the image
 length_y = 28 # height of the image
 n_class = 10  # number of classes
-#rescale_base = 255
-test_split = 3000
-print_wrong_cases = True
-output_predict = True
-test_layers_combination = True
-#use_PCA = False
-tune_parameters = False
-avg_run = 3
+evaluate_split = 3000
+output_predict = False
 
 # %%
 def read(file_path = 'example_data/MNIST/'):
@@ -60,65 +54,8 @@ def examine(feature, label, view = 10):
     n_feature = len(feature)
     view_list = np.random.choice(n_feature, min(view, n_feature), replace = False)
     for i in view_list:
-        print('i =',i, 'label =', label[i])
         display(feature[i])
-# %%
-'''
-def par_tune(feature_train, label_train):
-#    for i in range(avg_run):
-#        alpha= 0.01 * 10**(-1*i)
-#        print("alpha= %f" % alpha)
-    best_accuracy = -1.0
-    
-    if test_layers_combination:
-        test_layers = (
-            (50,), (300,), (500,), (700,),
-            #(400), (600), (700), (800), (1200), (1600),
-            #(400, 100), (800, 200), (1200, 300), (1600, 400),
-            #(400, 100, 40), (800, 400, 200), (1600, 800, 200),
-            #(400, 300, 200, 100), (400, 400, 400, 400), (800, 800, 800, 800)
-        )
-    else:
-        test_layers = ((700,),)
-    
-    for tlayer in test_layers:
-        print("********** Layers:", tlayer, "**********")
-        n_test_tot = 0
-        n_test_cor = 0
-        for i in range(avg_run):
-            train_f_shuff, train_l_shuff, test_f_shuff, test_l_shuff= make_train_test(feature_train, label_train, test_split)
-            
-            model = nn.NeuralNetwork(len(X_ori_train[0]), len(Y_train[0]), sl)
-            model.train(X_ori_train, Y_train, runs, step, verbose=1)
-    
-            
-            trained_nn = nn.train_neural_network(train_f_shuff, train_l_shuff, hidden_layer_sizes = tlayer, tol = 2e-5)
-            n_cor_i, n_tot_i, wrong_f, wrong_l, wrong_p = nn.test_neural_network(trained_nn, test_f_shuff, test_l_shuff, rescale_base)
-
-            n_test_cor += n_cor_i
-            n_test_tot += n_tot_i
-
-#        print("***** PCA *****")
-#        trained_nn = nn.train_neural_network(reduced_features[:n_train], label_train[:n_train], rescale_base)
-#        wrong_f, wrong_l, wrong_p = nn.test_neural_network(trained_nn, reduced_features[n_train:n_train_data], label_train[n_train:n_train_data], rescale_base)
-        if best_accuracy < n_test_cor/n_test_tot:
-            best_accuracy = n_test_cor/n_test_tot
-            best_trained_nn = trained_nn
-            best_trained_nn.name = tlayer
-        print('--- Average accuracy: ', n_test_cor/n_test_tot, ' ---')
-        print()
-
-    
-#    for i in range(10):
-#        input_tol= 10**(-1*i)
-#        print("Tol:", input_tol)
-#        trained_nn = nn.train_neural_network(feature_train[0:n_data-test_split], label_train[0:n_data-test_split], rescale_base, hidden_layer_sizes = (700), tol= input_tol)
-#        wrong_f, wrong_l, wrong_p = nn.test_neural_network(trained_nn, feature_train[n_train:n_train_data], label_train[n_train:n_train_data], rescale_base)
-#        print()
-
-    print('Best neural network is', best_trained_nn.name)
-    return best_trained_nn
-'''
+        print('i =',i, 'label =', label[i])        
 # %%
 def split_data(features, labels, n_second):
     '''
@@ -137,66 +74,151 @@ def split_data(features, labels, n_second):
             features_shuff[:n_second], labels_shuff[:n_second])
 # %% Main
 if __name__ == '__main__':
-    print('=== Test on MNIST ===')
+    print('===== Test on MNIST =====')
 
     ###### Reading data ######
-    print('Reading data')
     (feature_set, label_set, feature_test) = read()
 
     ###### Print shapes ######
-    print(feature_set.shape)
-    print(label_set.shape)
-    print(feature_test.shape)
+    print('--- Data dimension ---')
+    print('feature set :',feature_set.shape)
+    print('label   set :',label_set.shape)
+    print('feature test:',feature_test.shape)
     #print(feature_train[1,])
     #print(label_train[1])
     #pd.display(feature_train[1], length_x, length_y)
     
     ###### Split into train and evaluation sets ######
     feature_train, label_train, feature_eval, label_eval = \
-        split_data(feature_set, label_set, test_split)
+        split_data(feature_set, label_set, evaluate_split)
+    print('training   samples:', len(label_train))
+    print('evaluation samples:', len(label_eval))
     
     X_ori_train = feature_train
     Y_train = nn.to_Y(label_train, n_class)
-    
-    sl = [50]
-    runs = 10
-    step = 0.1
-    model = nn.NeuralNetwork(len(X_ori_train[0]), len(Y_train[0]), sl)
-    print('Start training ...')
-    model.train(X_ori_train, Y_train, runs, step, verbose=max(int(runs/20),1), 
-                norm_method='normal')
-    
-    print('Training accuracy:', model.accuracy_class(X_ori_train, Y_train))
-    
-    ###### Evaluating the network ######
     X_ori_eval = feature_eval
     Y_eval = nn.to_Y(label_eval, n_class)
-    print('Evaluation accuracy', model.accuracy_class(X_ori_eval, Y_eval))
     
-    '''
-    ###### Perform PCA reduction ######
-    if use_PCA:
-        feature_train, pca_model, n_rf = pr.pca_reduction(feature_train)
-        print(feature_train.shape)
-    ###### Tune pars of NN ######
-    if tune_parameters:
-        trained_nn = par_tune(feature_train, label_train)        
-    else:
-        ## Training NN and get results ######
-        train_f_shuff, train_l_shuff, test_f_shuff, test_l_shuff= make_train_test(feature_train, label_train, test_split)
-            
-        trained_nn = nn.train_neural_network(train_f_shuff, train_l_shuff, rescale_base, hidden_layer_sizes = (700,), tol= 2e-5, early_stopping = True)
-        n_cor_i, n_tot_i, wrong_f, wrong_l, wrong_p = nn.test_neural_network(trained_nn, test_f_shuff, test_l_shuff, rescale_base)        
-
-    '''
-    '''
-    ###### Print out wrong cases ######
-    if print_wrong_cases and not tune_parameters and not use_PCA:
-        print('Wrong cases:')
-        for i in range(min(10, len(wrong_l))):
-            print("(i, label, predict)", i, ",", wrong_l[i], ",", wrong_p[i])
-            display(wrong_f[i], length_x, length_y)
-    '''
+    # %% [50]
+    print('sl = [50]')
+    sl = [50]  # hidden layer structure
+    runs = 200
+    step = 0.1
+    model = nn.NeuralNetwork(len(X_ori_train[0]), len(Y_train[0]), sl)
+    print('### Start training ...')
+    # Normal work much better than minmax
+    
+    # %% Norm He_u
+    print('Norm He_u')
+    model.train(X_ori_train, Y_train, runs, step, verbose=max(int(runs/20),1), 
+                norm_method='normal', initializer='He_uniform')
+    print('Training   accuracy:', model.accuracy_class(X_ori_train, Y_train))
+    print('Evaluation accuracy:', model.accuracy_class(X_ori_eval, Y_eval))
+    label_test = model.predict_class(feature_test)
+    output(model.predict_class(feature_test), 
+           'example_data/MNIST/test_predict - [50] - 200 - norm - He_u.csv')
+    # 0.9648, 0.924
+    # %% Norm Xa_u
+    print('Norm Xa_u')
+    model.train(X_ori_train, Y_train, runs, step, verbose=max(int(runs/20),1), 
+                norm_method='normal', initializer='Xavier_uniform')
+    print('Training   accuracy:', model.accuracy_class(X_ori_train, Y_train))
+    print('Evaluation accuracy:', model.accuracy_class(X_ori_eval, Y_eval))
+    label_test = model.predict_class(feature_test)
+    output(model.predict_class(feature_test), 
+           'example_data/MNIST/test_predict - [50] - 200 - norm - Xa_u.csv')
+    # 0.9665, 0.9246
+    # %% Minmax_all He_u
+    print('Minmax_all He_u')
+    model.train(X_ori_train, Y_train, runs, step, verbose=max(int(runs/20),1), 
+                norm_method='minmax_all', initializer='He_uniform')
+    print('Training   accuracy:', model.accuracy_class(X_ori_train, Y_train))
+    print('Evaluation accuracy:', model.accuracy_class(X_ori_eval, Y_eval))
+    label_test = model.predict_class(feature_test)
+    output(model.predict_class(feature_test), 
+           'example_data/MNIST/test_predict - [50] - 200 - minmax_a - He_u.csv')
+    #     
+    # %% Minmax_all Xa_u
+    print('Minmax_all Xa_u')
+    model.train(X_ori_train, Y_train, runs, step, verbose=max(int(runs/20),1), 
+                norm_method='minmax_all', initializer='Xavier_uniform')
+    print('Training   accuracy:', model.accuracy_class(X_ori_train, Y_train))
+    print('Evaluation accuracy:', model.accuracy_class(X_ori_eval, Y_eval))
+    label_test = model.predict_class(feature_test)
+    output(model.predict_class(feature_test), 
+           'example_data/MNIST/test_predict - [50] - 200 - minmax_a - Xa_u.csv')
+    # 
+    # %% [50, 25]
+    print('sl = [50, 25]')
+    sl = [50, 25]  # hidden layer structure
+    runs = 200
+    step = 0.1
+    model = nn.NeuralNetwork(len(X_ori_train[0]), len(Y_train[0]), sl)
+    print('### Start training ...')
+    # Normal work much better than minmax
+    
+    # %% Norm He_u
+    print('Norm He_u')
+    model.train(X_ori_train, Y_train, runs, step, verbose=max(int(runs/20),1), 
+                norm_method='normal', initializer='He_uniform')
+    print('Training   accuracy:', model.accuracy_class(X_ori_train, Y_train))
+    print('Evaluation accuracy:', model.accuracy_class(X_ori_eval, Y_eval))
+    label_test = model.predict_class(feature_test)
+    output(model.predict_class(feature_test), 
+           'example_data/MNIST/test_predict - [50,25] - 200 - norm - He_u.csv')
+    # 0.9652, 0.8913
+    # %% Norm Xa_u
+    print('Norm Xa_u')
+    model.train(X_ori_train, Y_train, runs, step, verbose=max(int(runs/20),1), 
+                norm_method='normal', initializer='Xavier_uniform')
+    print('Training   accuracy:', model.accuracy_class(X_ori_train, Y_train))
+    print('Evaluation accuracy:', model.accuracy_class(X_ori_eval, Y_eval))
+    label_test = model.predict_class(feature_test)
+    output(model.predict_class(feature_test), 
+           'example_data/MNIST/test_predict - [50,25] - 200 - norm - Xa_u.csv')
+    # 0.9285, 0.8487
+    # %% Minmax_all He_u
+    print('Minmax_all He_u')
+    model.train(X_ori_train, Y_train, runs, step, verbose=max(int(runs/20),1), 
+                norm_method='minmax_all', initializer='He_uniform')
+    print('Training   accuracy:', model.accuracy_class(X_ori_train, Y_train))
+    print('Evaluation accuracy:', model.accuracy_class(X_ori_eval, Y_eval))
+    label_test = model.predict_class(feature_test)
+    output(model.predict_class(feature_test), 
+           'example_data/MNIST/test_predict - [50,25] - 200 - minmax_a - He_u.csv')
+    # 0.11, 0.12
+    # %% Minmax_all Xa_u
+    print('Minmax_all Xa_u')
+    model.train(X_ori_train, Y_train, runs, step, verbose=max(int(runs/20),1), 
+                norm_method='minmax_all', initializer='Xavier_uniform')
+    print('Training   accuracy:', model.accuracy_class(X_ori_train, Y_train))
+    print('Evaluation accuracy:', model.accuracy_class(X_ori_eval, Y_eval))
+    label_test = model.predict_class(feature_test)
+    output(model.predict_class(feature_test), 
+           'example_data/MNIST/test_predict - [50,25] - 200 - minmax_a - Xa_u.csv')
+    # 0.11, 0.12
+    # %% Minmax_all He_n
+    print('Minmax_all He_n')
+    model.train(X_ori_train, Y_train, runs, step, verbose=max(int(runs/20),1), 
+                norm_method='minmax_all', initializer='He_normal')
+    print('Training   accuracy:', model.accuracy_class(X_ori_train, Y_train))
+    print('Evaluation accuracy:', model.accuracy_class(X_ori_eval, Y_eval))
+    label_test = model.predict_class(feature_test)
+    output(model.predict_class(feature_test), 
+           'example_data/MNIST/test_predict - [50,25] - 200 - minmax_a - He_n.csv')
+    # 0.11, 0.12
+    # %% Minmax_all Xa_n
+    print('Minmax_all Xa_n')
+    model.train(X_ori_train, Y_train, runs, step, verbose=max(int(runs/20),1), 
+                norm_method='minmax_all', initializer='Xavier_normal')
+    print('Training   accuracy:', model.accuracy_class(X_ori_train, Y_train))
+    print('Evaluation accuracy:', model.accuracy_class(X_ori_eval, Y_eval))
+    label_test = model.predict_class(feature_test)
+    output(model.predict_class(feature_test), 
+           'example_data/MNIST/test_predict - [50,25] - 200 - minmax_a - Xa_n.csv')
+    # 0.11, 0.12
+    # %%
+    ###### Evaluating the network ######
     
     ###### Output predicts for test data ######
     if output_predict:
