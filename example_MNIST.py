@@ -4,12 +4,13 @@ import neural_network as nn
 
 length_x = 28 # width of the image
 length_y = 28 # height of the image
+n_class = 10  # number of classes
 #rescale_base = 255
 test_split = 3000
 print_wrong_cases = True
 output_predict = True
 test_layers_combination = True
-use_PCA = False
+#use_PCA = False
 tune_parameters = False
 avg_run = 3
 
@@ -40,6 +41,7 @@ def read(file_path = 'example_data/MNIST/'):
     return np.array(feature_train), np.array(label_train), np.array(feature_test)
 # %% 
 def output(test_predict, file_name = 'test_predict.csv'):
+    '''Output result to file'''
     print('### Writing test result file to', file_name, '...')
     with open(file_name, 'w') as OFILE:
         print('ImageId,Label', file = OFILE)
@@ -60,8 +62,8 @@ def examine(feature, label, view = 10):
     for i in view_list:
         print('i =',i, 'label =', label[i])
         display(feature[i])
-    
 # %%
+'''
 def par_tune(feature_train, label_train):
 #    for i in range(avg_run):
 #        alpha= 0.01 * 10**(-1*i)
@@ -86,7 +88,11 @@ def par_tune(feature_train, label_train):
         for i in range(avg_run):
             train_f_shuff, train_l_shuff, test_f_shuff, test_l_shuff= make_train_test(feature_train, label_train, test_split)
             
-            trained_nn = nn.train_neural_network(train_f_shuff, train_l_shuff, rescale_base, hidden_layer_sizes = tlayer, tol = 2e-5)
+            model = nn.NeuralNetwork(len(X_ori_train[0]), len(Y_train[0]), sl)
+            model.train(X_ori_train, Y_train, runs, step, verbose=1)
+    
+            
+            trained_nn = nn.train_neural_network(train_f_shuff, train_l_shuff, hidden_layer_sizes = tlayer, tol = 2e-5)
             n_cor_i, n_tot_i, wrong_f, wrong_l, wrong_p = nn.test_neural_network(trained_nn, test_f_shuff, test_l_shuff, rescale_base)
 
             n_test_cor += n_cor_i
@@ -112,51 +118,60 @@ def par_tune(feature_train, label_train):
 
     print('Best neural network is', best_trained_nn.name)
     return best_trained_nn
-
-def make_train_test(features, labels, n_test):
+'''
+# %%
+def split_data(features, labels, n_second):
     '''
-    Shuffle the training data and slpit them into training set and test set.
+    Shuffle and slpit the data into two sets (eg. training set and evaluation 
+    set).
+    n_second: number of the second set
+    Return: 1st set of features, 1st set of labels, 2nd set of features, and
+            2nd set of labels
     '''
-    n_data= len(labels)
-#    combine= np.concatenate( (features, labels.reshape( (n_data, 1) )), axis=1 )
-#    np.random.shuffle(combine)
-#    return combine[0:(n_data-n_test), 0:-1], combine[0:(n_data-n_test), -1], combine[(n_data-n_test):, 0:-1], combine[(n_data-n_test):, -1]
+    n_data = len(labels)
     shuffle_index = list(range(n_data))
     np.random.shuffle(shuffle_index)
     features_shuff = np.array([features[i] for i in shuffle_index])
     labels_shuff = np.array([labels[i] for i in shuffle_index])
-    return features_shuff[n_test:], labels_shuff[n_test:], features_shuff[:n_test], labels_shuff[:n_test]
-
-#def main():
+    return (features_shuff[n_second:], labels_shuff[n_second:], 
+            features_shuff[:n_second], labels_shuff[:n_second])
+# %% Main
 if __name__ == '__main__':
     print('=== Test on MNIST ===')
 
     ###### Reading data ######
     print('Reading data')
-    (feature_train, label_train, feature_test) = read()
+    (feature_set, label_set, feature_test) = read()
 
     ###### Print shapes ######
-    print(feature_train.shape)
-    print(label_train.shape)
-    #    print(feature_train[1,])
-    #    print(label_train[1])
+    print(feature_set.shape)
+    print(label_set.shape)
     print(feature_test.shape)
+    #print(feature_train[1,])
+    #print(label_train[1])
     #pd.display(feature_train[1], length_x, length_y)
     
-    n_class = 10  # number of classes
+    ###### Split into train and evaluation sets ######
+    feature_train, label_train, feature_eval, label_eval = \
+        split_data(feature_set, label_set, test_split)
     
     X_ori_train = feature_train
-    Y_train = np.array([[1 if label == i else 0 for i in range(n_class)] for label in label_train])
+    Y_train = nn.to_Y(label_train, n_class)
     
-    sl = [200]
-    
-    runs = 100
+    sl = [50]
+    runs = 10
     step = 0.1
     model = nn.NeuralNetwork(len(X_ori_train[0]), len(Y_train[0]), sl)
-    model.train(X_ori_train, Y_train, runs, step, verbose=1, 
-                norm_method='minmax')
+    print('Start training ...')
+    model.train(X_ori_train, Y_train, runs, step, verbose=max(int(runs/20),1), 
+                norm_method='normal')
     
     print('Training accuracy:', model.accuracy_class(X_ori_train, Y_train))
+    
+    ###### Evaluating the network ######
+    X_ori_eval = feature_eval
+    Y_eval = nn.to_Y(label_eval, n_class)
+    print('Evaluation accuracy', model.accuracy_class(X_ori_eval, Y_eval))
     
     '''
     ###### Perform PCA reduction ######

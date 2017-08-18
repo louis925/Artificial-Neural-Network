@@ -5,26 +5,34 @@ sigmoid activation function.
 
 examples.py contains all the test case examples
 '''
-from neural_network import *
 import numpy as np
 import matplotlib.pyplot as plt
+import neural_network as nn
 # %%
 #test cases
 def test0():
     x = [[1],[2],[3],[4]]
     y = [[0],[0],[1],[1]]
     sl = []  # no hidden layer
-    nn = NeuralNetwork(len(x[0]), len(y[0]), sl)
-    nn.train(x,y,100,0.3)
-    return nn
+    model = nn.NeuralNetwork(len(x[0]), len(y[0]), sl)
+    model.train(x,y,100,0.3)
+    print('Predict:', model.predict(model.X_ori))
+    print('Cost:', model.cost())
+    print('X^2:', model.Chi_square())
+    print('Regression Accuracy:', model.accuracy_regression(model.X_ori, 
+                                                            model.Y))
+    return model
 # %%
 def test1():
     x = [[1.0,1.0,1.0], [2.0,2.0,2.0], [3.0,3.0,3.0], [4.0,4.0,4.0]]
     y = [[1,0], [0,1], [1,1], [0,0]]
     sl = [5,3]  # 2 hidden layers
-    nn = NeuralNetwork(len(x[0]), len(y[0]), sl)
-    nn.train(x,y,100,0.3)
-    return nn
+    model = nn.NeuralNetwork(len(x[0]), len(y[0]), sl)
+    model.train(x,y,100,0.3)
+    print('Predict:', model.predict(model.X_ori))
+    print('Regression Accuracy:', model.accuracy_regression(model.X_ori, 
+                                                            model.Y))
+    return model
 # %%
 def test2():
     '''test the neural network as a logistic function fitting'''
@@ -36,10 +44,11 @@ def test2():
     randsample = np.random.rand(n)
     x = (np.arange(n)/float(n) - 0.5) * xmax
     #x = a1 * (np.random.rand(n, 1) - 0.5) + a0
-    hofx = gf(x)
+    hofx = nn.gf(x)
     x = x * a1 + a0
     y = np.array([1 if randsample[i] < hofx[i] else 0 for i in range(n)])
     #y = np.array([[1] if yi > 0.5 else [0] for yi in y_log])
+    plt.style.use('default')
     plt.plot(x, y, '+')
     plt.plot(x, hofx)
     plt.plot(x, randsample, 'r*')
@@ -51,14 +60,19 @@ def test2():
     sl = []  # no hidden layer
     runs = 500
     step = 0.5
-    nn = NeuralNetwork(len(x[0]), len(y[0]), sl)
-    nn.train(x, y, runs, step)
+    model = nn.NeuralNetwork(len(x[0]), len(y[0]), sl)
+    model.train(x, y, runs, step, optimizer='sgd')  # better on sgd
 
     plt.plot(x, hofx)
-    plt.plot(nn.X_ori, nn.Y_pred, '+')
+    plt.plot(model.X_ori, model.Y_pred, '+')
     plt.show()
     
-    return nn
+    print('Predict:', model.predict(model.X_ori))
+    print('Cost:', model.cost())
+    print('X^2:', model.Chi_square())
+    print('Regression Accuracy:', model.accuracy_regression(model.X_ori, 
+                                                            model.Y))
+    return model
 # %%
 def test3():
     '''test the neural network as a XNOR logic unit'''
@@ -70,13 +84,19 @@ def test3():
     sl = [2] #1 hidden layer with 2 units
     runs = 500
     step = 0.5
-    nn = NeuralNetwork(len(x[0]), len(y[0]), sl)
-    nn.train(x, y, runs, step)
+    model = nn.NeuralNetwork(len(x[0]), len(y[0]), sl)
+    model.train(x, y, runs, step, optimizer='adam')
     print('t matrices:')
-    print(nn.t)
+    print(model.t)
     print('t0 vectors:')
-    print(nn.t0)
-    return nn
+    print(model.t0)
+    
+    print('Predict:', model.predict(model.X_ori))
+    print('Cost:', model.cost())
+    print('X^2:', model.Chi_square())
+    print('Regression Accuracy:', model.accuracy_regression(model.X_ori, 
+                                                            model.Y))
+    return model
 # %%
 def test4():
     'improved test of the neural network as a XNOR logic unit'
@@ -84,6 +104,7 @@ def test4():
     xmax = 10
     x = np.array([[0.0, 0.0]] * n)
     y = np.array([[0]] * n)
+    np.random.seed(817)  # fix the initial seed for comparison purpose
     for i in range(n):
         a1 = xmax * (np.random.rand() - 0.5)
         a2 = xmax * (np.random.rand() - 0.5)
@@ -118,26 +139,35 @@ def test4():
     plt.plot(x1n, x2n, 'x')
     plt.show()
     
-    sl = [2]  # 1 hidden layer with 2 neurons
-    runs = 500
-    step = 0.2
-    nn = NeuralNetwork(len(x[0]), len(y[0]), sl)
-    nn.train(x, y, runs, step)
+    sl = [4,2]  # 1 hidden layer with 2 neurons
+    runs = 4000
+    step = 0.0015
+    model = nn.NeuralNetwork(len(x[0]), len(y[0]), sl)
+    model.train(x, y, runs, step, verbose=200, optimizer='adam')
     print('t matrices:')
-    print(nn.t)
+    print(model.t)
     print('t0 vectors:')
-    print(nn.t0)
-    return nn
+    print(model.t0)
+    
+    print('Correct:', model.Y.T)
+    print('Predict:', model.predict(model.X_ori).T)
+    print('Cost:', model.cost())
+    print('X^2:', model.Chi_square())
+    print('Regression Accuracy:', model.accuracy_regression(model.X_ori, 
+                                                            model.Y))
+    return model
 # %%
 def test_class_0():
     x = [[1, 0], [1, 1], [0, 0], [0, -1], [2, 1], [2, 0]]
     y = [[1, 0, 0], [1, 0, 0], [0, 1, 0], [0, 1, 0], [0, 0, 1], [0, 0, 1]]
     sl = [4]  # 1 hidden layers
-    nn = NeuralNetwork(len(x[0]), len(y[0]), sl)
-    nn.train(x,y,300,0.7)
+    model = nn.NeuralNetwork(len(x[0]), len(y[0]), sl)
+    model.train(x,y,300,0.7)
     print('Prediction for training data:')
-    print(nn.predict(nn.X_ori))
-    print('Predicted class index:', nn.predict_class(nn.X_ori))
-    print('Regression accuracy:', nn.accuracy_regression(nn.X_ori, nn.Y))
-    print('Classification accuracy:', nn.accuracy_class(nn.X_ori, nn.Y))
-    return nn
+    print(model.predict(model.X_ori))
+    print('Predicted class index:', model.predict_class(model.X_ori))
+    print('Cost:', model.cost())
+    print('X^2:', model.Chi_square())
+    print('Regression accuracy:', model.accuracy_regression(model.X_ori, model.Y))
+    print('Classification accuracy:', model.accuracy_class(model.X_ori, model.Y))
+    return model

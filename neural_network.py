@@ -40,7 +40,7 @@ class NeuralNetwork(object):
         '''hidden_layers_list: list of number of units in each hidden layers'''
         self.X = np.array([])
         self.Y = np.array([])
-        self.m = 0  # total number of training data points
+        self.m = 0  # total number of training samples
         self.n = input_dim
         self.yn = output_dim
         self.sl = [input_dim] + hidden_layers_list + [output_dim]  
@@ -51,7 +51,7 @@ class NeuralNetwork(object):
         return
 
     def train(self, x_data, y_data, iters, step, verbose = 10, conti = False,
-              norm_method = 'normal'):
+              norm_method = 'normal', optimizer = 'adam', init = 'coursera'):
         '''Train the neural network with data
         
         x_data: training data features (2D float np.array with dimension = 
@@ -79,14 +79,20 @@ class NeuralNetwork(object):
             self.m = len(y_data) # total number of training data points
         
         if conti:  # Continue run
-            # Normalize X using the previous factors:
+            # normalize X using the previous factors:
             self.X = self.rescale_X(self.X_ori)
         else:  # First run
-            # Normalize X:
+            # new normalization from X:
             self.normal_X(method = norm_method)
             
             # Initialize the t matrices and t0 vectors:
             self.init_t()
+            
+            self.iter = 1  # Set initial time
+            if optimizer == 'adam':
+                self.init_adam()  # initialization for adam method
+        
+        self.step = step  # record the learning rate            
             
         # Training neural network:
         for i in range(iters):
@@ -97,7 +103,11 @@ class NeuralNetwork(object):
             self.delta_compute()
             self.t_grad_gen()
             self.t0_grad_gen()
-            self.t_update(step)
+            if optimizer == 'sgd':
+                self.t_update_sgd(step)
+            else:  # default using adams
+                self.t_update_adam(step, self.iter)
+            self.iter += 1
         print('Final run: ' + str(self.cost()))
         return
 
@@ -123,38 +133,54 @@ class NeuralNetwork(object):
         '''undo the rescale of X using the factor stored in the network'''
         return X * self.X_ori_scale + self.X_ori_center
     
-    def init_t(self):
-        '''assign random initial values to the parameter matrices t in the 
-        range of tmin to tmax
+    def init_t(self, init='coursera'):
+        '''assign random initial values to the parameter matrices t and vector 
+        t0 with Xavier initialization.
         '''
-        self.ti_epsi = np.array([np.sqrt(6.0/(self.sl[l] + self.sl[l+1])) \
+        #self.ti_epsi = np.array([np.sqrt(6.0/(self.sl[l] + self.sl[l+1])) \
+        #                         for l in range(self.n_layers)])
+        self.ti_epsi = np.array([2.0 * np.sqrt(1.0/(self.sl[l])) \
                                  for l in range(self.n_layers)])
         for l in range(self.n_layers):
             self.t[l] = self.ti_epsi[l] * (np.random.rand(self.sl[l+1],
                   self.sl[l]) - 0.5)
+            #self.t0[l] = self.ti_epsi[l] * (np.random.rand(self.sl[l+1]) - 0.5)
             self.t0[l] = self.ti_epsi[l] * (np.random.rand(self.sl[l+1]) - 0.5)
         return
-
+    
+    def init_adam(self):
+        '''Initialization for the m and v parameters in Adam method'''
+        self.adam_m = [np.zeros(layer.shape) for layer in self.t]
+        self.adam_m0 = [np.zeros(layer0.shape) for layer0 in self.t0]
+        self.adam_v = [np.zeros(layer.shape) for layer in self.t]
+        self.adam_v0 = [np.zeros(layer0.shape) for layer0 in self.t0]
+        return
+    
     def y_pred_ori(self, x_ori):
-        '''input a single data x (original), return the prediction y'''
-        x_next = self.rescale_X(x_ori)        
-        for j in range(self.n_layers):
-            #x_next = gf(np.dot(self.t[j], x_next) + self.t0[j])
-            x_next = gf(np.inner(x_next, self.t[j]) + self.t0[j])
-        return x_next
+        '''input data x_ori (original), return the prediction y
+        x_ori can be single or a list samples
+        '''
+        #x_next = self.rescale_X(x_ori)
+        #for j in range(self.n_layers):
+        #    #x_next = gf(np.dot(self.t[j], x_next) + self.t0[j])
+        #    x_next = gf(np.inner(x_next, self.t[j]) + self.t0[j])
+        return self.y_pred(self.rescale_X(x_ori))
 
     def y_pred(self, x):
-        '''input a single data x (normalized), return the prediction y'''
-        x_next = x  # single data feature x
+        '''input data x (normalized), return the prediction y
+        x can be single or a list samples
+        '''
+        #x_next = x  # single data feature x
         for j in range(self.n_layers):
             #x_next = gf(np.dot(self.t[j], x_next) + self.t0[j])
-            x_next = gf(np.inner(x_next, self.t[j]) + self.t0[j])
-        return x_next
+            x = gf(np.inner(x, self.t[j]) + self.t0[j])
+        return x
     
     def Y_pred_gen(self):
-        '''return the list of prediction y from the training data x_data'''
-        # self.Y_pred = np.array(map(self.y_pred, self.X))
-        self.Y_pred = np.apply_along_axis(self.y_pred, 1, self.X)
+        '''Generate and return the prediction Y from the training data X'''
+        #self.Y_pred = np.array(map(self.y_pred, self.X))
+        #self.Y_pred = np.apply_along_axis(self.y_pred, 1, self.X)
+        self.Y_pred = self.y_pred(self.X)
         return self.Y_pred
 
     def Chi_square(self):
@@ -204,22 +230,49 @@ class NeuralNetwork(object):
             self.t0_grad[l] = np.sum(self.delta[l], 0) / self.m
         return
 
-    def t_update(self, step):
-        '''update t matrices and t0 vectors according to gradient descent'''
+    def t_update_sgd(self, step):
+        '''update t matrices and t0 vectors using gradient descent'''
         for l in range(self.n_layers):
             self.t[l] -= step * self.t_grad[l]
             self.t0[l] -= step * self.t0_grad[l]
         return
 
+    def t_update_adam(self, step, i, eps=1e-8, beta1=0.9, beta2=0.999):
+        '''Update t matrices and t0 vectors using the Adam method
+        Ref: https://arxiv.org/abs/1412.6980
+        '''
+        mfactor = 1.0 - beta1 ** i
+        vfactor = 1.0 - beta2 ** i
+        mibeta1 = 1.0 - beta1
+        mibeta2 = 1.0 - beta2
+        for l in range(self.n_layers):
+            self.adam_m[l] = beta1*self.adam_m[l] + mibeta1 * self.t_grad[l]
+            self.adam_m0[l] = beta1*self.adam_m0[l] + mibeta1 * self.t0_grad[l]
+            mt = self.adam_m[l] / mfactor
+            mt0 = self.adam_m0[l] / mfactor
+            self.adam_v[l] = beta2 * self.adam_v[l] + \
+                             mibeta2 * (self.t_grad[l] ** 2)
+            self.adam_v0[l] = beta2 * self.adam_v0[l] + \
+                              mibeta2 * (self.t0_grad[l] ** 2)
+            vt = self.adam_v[l] / vfactor
+            vt0 = self.adam_v0[l] / vfactor
+            
+            self.t[l] -= step * mt / (np.sqrt(vt) + eps)
+            self.t0[l] -= step * mt0 / (np.sqrt(vt0) + eps)
+        return
+
     def predict(self, X_ori):
-        '''Given data set X_ori (original) return the prediction of X_ori'''
-        Y_pred_float = np.apply_along_axis(self.y_pred_ori, 1, X_ori)
-        return 1 * (Y_pred_float > 0.5)
+        '''Return the 0 or 1 prediction of X_ori in each Y'''
+        #Y_pred_float = np.apply_along_axis(self.y_pred_ori, 1, X_ori)
+        #Y_pred_float = self.y_pred_ori(X_ori)
+        #return 1 * (Y_pred_float > 0.5)
+        return 1 * (self.y_pred_ori(X_ori) > 0.5)    
     
     def predict_class(self, X_ori):
         '''Return predicted class index of data set X_ori'''
-        X = self.rescale_X(X_ori)
-        return np.argmax(np.apply_along_axis(self.y_pred, 1, X), axis=1)
+        #X = self.rescale_X(X_ori)
+        #return np.argmax(np.apply_along_axis(self.y_pred, 1, X), axis=1)
+        return to_class(self.y_pred_ori(X_ori))
     
     def accuracy_regression(self, X_ori, Y):
         '''Regression accuracy based on given data set X and Y
@@ -233,10 +286,25 @@ class NeuralNetwork(object):
         Y_class = to_class(Y)  # extract the class index
         Y_class_pred = self.predict_class(X_ori)
         return np.sum(Y_class == Y_class_pred) / len(Y_class)
+    
+    def train_accuracy_reg(self):
+        '''Training regression accuracy'''
+        return self.accuracy_regression(self.X_ori, self.Y)
+    
+    def train_accuracy_class(self):
+        '''Training classification accuracy'''
+        return self.accuracy_class(self.X_ori, self.Y)
 
 def to_class(Y):
-    ''' Convert class score to class index
+    '''Convert class score to class index
     Given Y = (0,0,..,1,0,0,...), return the index of the first 1
     Given Y = (0.1, 0.9, 0.2,..), return the index of the most likely class
     '''
     return np.argmax(Y, axis=-1)
+
+def to_Y(class_index_set, n_class):
+    '''Convert class index set into Y = (0,0,...1,0,...) where the 1 locates at
+    the class index.
+    '''
+    return np.array([[1 if class_index == i else 0 for i in range(n_class)]
+                      for class_index in class_index_set])
